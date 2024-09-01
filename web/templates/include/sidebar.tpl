@@ -24,6 +24,7 @@
 		<div id="bandwidth-monitor" class="nav-link">
 			<img class="icon bandwidth-icon" src="assets/icons/feather/activity.svg" />
 			<span class="nav-text bandwidth-text"><span id="bandwidth-value">0.00</span> MB/s</span>
+			<span class="nav-text bandwidth-text"><span id="bandwidth-total">0.00</span> MB</span>
 		</div>
 		<a href="live" id="nav-link-live" class="nav-link">
 			<img class="icon" src="assets/icons/feather/video.svg" />

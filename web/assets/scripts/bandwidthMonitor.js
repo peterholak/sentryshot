@@ -8,7 +8,7 @@ function updateBandwidth() {
     const now = performance.now();
     
     recentBandwidths.push({bytes: totalBytes, time: now});
-    if (recentBandwidths.length > 3) {
+    if (recentBandwidths.length > 5) {
         recentBandwidths.shift();
     }
 
@@ -23,6 +23,11 @@ function updateBandwidth() {
         if ($bandwidthValue) {
             $bandwidthValue.textContent = averageBandwidth.toFixed(2);
         }
+    }
+
+    const $bandwidthTotal = document.getElementById('bandwidth-total');
+    if ($bandwidthTotal) {
+        $bandwidthTotal.textContent = (totalBytes / 1000000).toFixed(2);
     }
 }
 
@@ -40,8 +45,8 @@ export function initBandwidthMonitor() {
     window.fetch = function() {
         return originalFetch.apply(this, arguments).then(response => {
             const clonedResponse = response.clone();
-            clonedResponse.arrayBuffer().then(buffer => {
-                totalBytes += buffer.byteLength;
+            clonedResponse.blob().then(blob => {
+                totalBytes += blob.size;
             });
             return response;
         });
