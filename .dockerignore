@@ -1,0 +1,13 @@
+node_modules/
+.git
+.idea
+target/
+storage/
+configs/
+configs-container/
+misc/
+docs/
+Dockerfile
+.dockerignore
+.gitignore
+.DS_Store
