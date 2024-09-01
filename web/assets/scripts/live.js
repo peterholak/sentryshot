@@ -4,6 +4,7 @@ import Hls from "./vendor/hls.js";
 import { uniqueID, sortByName } from "./libs/common.js";
 import { newOptionsMenu, newOptionsBtn } from "./components/optionsMenu.js";
 import { newFeed, newFeedBtn } from "./components/feed.js";
+import { initBandwidthMonitor } from "./bandwidthMonitor.js";
 
 /**
  * @typedef {import("./components/feed.js").FullscreenButton} FullscreenButton
@@ -152,6 +153,8 @@ function init() {
 	document.querySelector("#options-menu").innerHTML = optionsMenu.html();
 	optionsMenu.init();
 	viewer.reset();
+
+	initBandwidthMonitor();
 
 	window.addEventListener("keydown", (e) => {
 		if (e.key === "Escape") {

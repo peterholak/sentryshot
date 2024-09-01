@@ -1106,6 +1106,15 @@ img {
 	border-radius: 0.2rem;
 }
 
+#bandwidth-monitor .bandwidth-icon {
+	width: 0.5rem;
+}
+
+#bandwidth-monitor .bandwidth-text, #bandwidth-monitor .bandwidth-text>* {
+	font-size: 10pt;
+	display: inline-block;
+}
+
 /* Mobile Landscape mode. */
 @media (aspect-ratio >= 3/2) {
 	:root {

@@ -21,6 +21,10 @@
 		<img class="icon" src="assets/icons/feather/x.svg" />
 	</div>
 	<nav id="navbar">
+		<div id="bandwidth-monitor" class="nav-link">
+			<img class="icon bandwidth-icon" src="assets/icons/feather/activity.svg" />
+			<span class="nav-text bandwidth-text"><span id="bandwidth-value">0.00</span> MB/s</span>
+		</div>
 		<a href="live" id="nav-link-live" class="nav-link">
 			<img class="icon" src="assets/icons/feather/video.svg" />
 			<span class="nav-text">Live</span>
