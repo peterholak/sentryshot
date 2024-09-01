@@ -1,24 +1,35 @@
 FROM rust:1.80-bookworm AS build
 
+ARG TARGETARCH
+RUN echo "TARGETARCH is set to $TARGETARCH"
+
 RUN mkdir /deps
 WORKDIR /deps
 RUN git clone https://github.com/google-coral/libedgetpu
-RUN git clone https://github.com/tensorflow/tensorflow && cd tensorflow && git checkout v2.16.1
+RUN git clone --branch v2.16.1 --depth 1 https://github.com/tensorflow/tensorflow
 
 RUN apt-get update && apt-get install -y \
     libusb-1.0-0-dev libavutil-dev libavcodec-dev pkg-config cmake xxd
 
-RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64
-RUN chmod +x bazelisk-linux-amd64
-RUN mv bazelisk-linux-amd64 /usr/bin/bazel
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    echo "LIBEDGETPU_ARCH=k8" >> /edgetpu-env; \
+elif [ "$TARGETARCH" = "arm64" ]; then \
+    echo "LIBEDGETPU_ARCH=aarch64" >> /edgetpu-env; \
+else exit 1; \
+fi
+
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-$TARGETARCH
+RUN chmod +x bazelisk-linux-$TARGETARCH
+RUN mv bazelisk-linux-$TARGETARCH /usr/bin/bazel
 WORKDIR /deps/libedgetpu
-RUN make -j8
+RUN bash -c 'source /edgetpu-env && CPU=$LIBEDGETPU_ARCH make -j8'
 
 RUN mkdir /deps/tflite_build
 WORKDIR /deps/tflite_build
 RUN cmake ../tensorflow/tensorflow/lite/c && cmake --build . -j8
 
-RUN cp -v /deps/libedgetpu/out/throttled/k8/*.so* /lib/ && cp /lib/libedgetpu.so.1.0 /lib/libedgetpu.so
+RUN bash -c 'source /edgetpu-env && echo "LIBEDGETPU_ARCH=$LIBEDGETPU_ARCH"'
+RUN bash -c 'source /edgetpu-env && cp -v /deps/libedgetpu/out/throttled/$LIBEDGETPU_ARCH/*.so* /lib/ && cp /lib/libedgetpu.so.1.0 /lib/libedgetpu.so'
 RUN cp -v /deps/tflite_build/*.so /lib/
 
 RUN mkdir -p /app/libs
@@ -61,4 +72,4 @@ COPY web /app/web
 COPY --from=build /app/libs/* /lib/
 WORKDIR /app
 ENV TZ=Etc/UTC
-ENTRYPOINT ["/app/sentryshot"]
+ENTRYPOINT ["/app/sentryshot", "run", "--config", "/app/configs/sentryshot.toml"]
