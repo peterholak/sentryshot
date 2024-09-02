@@ -1,5 +1,8 @@
 FROM rust:1.80-bookworm AS build
 
+ARG BUILD_CONCURRENCY=8
+ENV BUILD_CONCURRENCY=$BUILD_CONCURRENCY
+
 ARG TARGETARCH
 RUN echo "TARGETARCH is set to $TARGETARCH"
 
@@ -22,11 +25,11 @@ RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazeli
 RUN chmod +x bazelisk-linux-$TARGETARCH
 RUN mv bazelisk-linux-$TARGETARCH /usr/bin/bazel
 WORKDIR /deps/libedgetpu
-RUN bash -c 'source /edgetpu-env && CPU=$LIBEDGETPU_ARCH make -j8'
+RUN bash -c 'source /edgetpu-env && CPU=$LIBEDGETPU_ARCH make -j$BUILD_CONCURRENCY'
 
 RUN mkdir /deps/tflite_build
 WORKDIR /deps/tflite_build
-RUN cmake ../tensorflow/tensorflow/lite/c && cmake --build . -j8
+RUN cmake ../tensorflow/tensorflow/lite/c && cmake --build . -j$BUILD_CONCURRENCY
 
 RUN bash -c 'source /edgetpu-env && echo "LIBEDGETPU_ARCH=$LIBEDGETPU_ARCH"'
 RUN bash -c 'source /edgetpu-env && cp -v /deps/libedgetpu/out/throttled/$LIBEDGETPU_ARCH/*.so* /lib/ && cp /lib/libedgetpu.so.1.0 /lib/libedgetpu.so'
