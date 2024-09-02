@@ -2,14 +2,10 @@ name: Docker Image CI
 on:
   push:
     branches: [ "my-changes" ]
-  pull_request:
-    branches: [ "my-changes" ]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     - uses: actions/checkout@v4
