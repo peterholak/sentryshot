@@ -23,6 +23,7 @@ use sentryshot_ffmpeg_h264::{
     ReceiveFrameError, SendPacketError,
 };
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::{
     runtime::Handle,
@@ -200,20 +201,31 @@ impl SourceRtsp {
         let token2 = token.clone();
         tokio::spawn(async move {
             let _shutdown_complete = shutdown_complete2;
+            let mut monitor_crash_count = 0u32;
             loop {
                 if token2.is_cancelled() {
                     source.log(LogLevel::Info, "stopped");
                     return;
                 }
 
+                let run_started_at = Instant::now();
                 match source.run(token2.child_token(), started_tx.clone()).await {
                     Ok(()) => source.log(LogLevel::Debug, "cancelled"),
-                    Err(e) => source.log(LogLevel::Error, &format!("crashed: {e}")),
+                    Err(e) => {
+                        monitor_crash_count += 1;
+                        source.log(LogLevel::Error, &format!("crashed {monitor_crash_count}-th time: {e}"))
+                    },
                 };
 
+                // if monitor ran for long enough, reset backoff
+                if run_started_at.elapsed().as_secs() > 120 {
+                    monitor_crash_count = 0;
+                }
+
+                let backoff = std::cmp::max(10, 2u64.pow(std::cmp::min(monitor_crash_count, 9)));
                 tokio::select! {
                     () = token2.cancelled() => {}
-                    () = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {}
+                    () = tokio::time::sleep(tokio::time::Duration::from_secs(backoff)) => {}
                 }
             }
         });
