@@ -30,6 +30,10 @@
 			<img class="icon" src="assets/icons/feather/video.svg" />
 			<span class="nav-text">Live</span>
 		</a>
+		<a href="live_hd" id="nav-link-live-hd" class="nav-link">
+			<img class="icon" src="assets/icons/feather/video.svg" />
+			<span class="nav-text">Live HD</span>
+		</a>
 		<a href="recordings" id="nav-link-recordings" class="nav-link">
 			<img class="icon" src="assets/icons/feather/film.svg" />
 			<span class="nav-text">Recordings</span>

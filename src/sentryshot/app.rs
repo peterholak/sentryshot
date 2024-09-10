@@ -236,6 +236,13 @@ impl App {
                     .route_layer(middleware::from_fn_with_state(self.auth.clone(), user))
                     .with_state(self.auth.clone()),
             )
+            .route(
+                "/live_hd",
+                get(template_handler)
+                    .with_state(template_handler_state.clone())
+                    .route_layer(middleware::from_fn_with_state(self.auth.clone(), user))
+                    .with_state(self.auth.clone()),
+            )
             // Recordings page.
             .route(
                 "/recordings",

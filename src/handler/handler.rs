@@ -29,7 +29,7 @@ use recdb::{DeleteRecordingError, RecDb, RecDbQuery, RecordingResponse};
 use recording::{new_video_reader, VideoCache};
 use rust_embed::EmbeddedFiles;
 use serde::Deserialize;
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use thiserror::Error;
 use tokio::sync::{broadcast::error::RecvError, Mutex};
 use tokio_util::io::ReaderStream;
@@ -47,8 +47,11 @@ pub async fn template_handler(
     headers: HeaderMap,
     State(s): State<TemplateHandlerState<'_>>,
 ) -> Response {
-    let path = uri.to_string();
-    let path = path.strip_prefix('/').unwrap_or(&path);
+    let current_page = uri.to_string();
+    let current_page = current_page.strip_prefix('/').unwrap_or(&current_page);
+    let mut sections = current_page.split('_');
+    let template_page = sections.next().unwrap_or(current_page);
+    let flags = sections.map(|s| (s.to_string(), upon::Value::Bool(true))).collect::<BTreeMap<_, _>>();
 
     let log = |msg: String| {
         s.templater
@@ -56,8 +59,8 @@ pub async fn template_handler(
             .log(LogEntry::new(LogLevel::Info, "app", None, msg));
     };
 
-    let Some(template) = s.templater.get_template(path) else {
-        log(format!("handle_templates: get template for path: {path}"));
+    let Some(template) = s.templater.get_template(template_page) else {
+        log(format!("handle_templates: get template for path: {template_page}"));
         return (StatusCode::INTERNAL_SERVER_ERROR, "template does not exist").into_response();
     };
 
@@ -66,7 +69,8 @@ pub async fn template_handler(
         None => (false, String::new()),
     };
 
-    let data = s.templater.get_data(path.to_owned(), is_admin, token).await;
+    let mut data = s.templater.get_data(current_page.to_owned(), is_admin, token).await;
+    data.insert("flags".to_string(), upon::Value::Map(flags));
 
     match template.render(data).to_string() {
         Ok(content) => (
@@ -75,7 +79,7 @@ pub async fn template_handler(
         )
             .into_response(),
         Err(e) => {
-            log(format!("handle_templates: render template '{path}': {e}"));
+            log(format!("handle_templates: render template '{template_page}': {e}"));
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "failed to render template",

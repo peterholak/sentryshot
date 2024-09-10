@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import { uidReset } from "./libs/common.js";
-import { newViewer, resBtn } from "./live.js";
+import { newViewer } from "./live.js";
 
 class mockHls {
 	constructor() {}
@@ -14,66 +14,6 @@ class mockHls {
 mockHls.Events = {
 	MEDIA_ATTACHED() {},
 };
-
-describe("resBtn", () => {
-	const mockContent = {
-		setPreferLowRes() {},
-		reset() {},
-	};
-	test("ok", () => {
-		uidReset();
-		document.body.innerHTML = `<div></div>`;
-		const element = document.querySelector("div");
-
-		const res = resBtn(mockContent);
-		element.innerHTML = res.html;
-
-		const $btn = document.querySelector("button");
-		expect($btn.textContent).toBe("X");
-
-		res.init();
-		expect($btn.textContent).toBe("HD");
-
-		// @ts-ignore
-		$btn.click();
-		expect($btn.textContent).toBe("SD");
-		expect(localStorage.getItem("preferLowRes")).toBe("true");
-
-		// @ts-ignore
-		$btn.click();
-		expect($btn.textContent).toBe("HD");
-		expect(localStorage.getItem("preferLowRes")).toBe("false");
-
-		// @ts-ignore
-		$btn.click();
-		expect($btn.textContent).toBe("SD");
-		expect(localStorage.getItem("preferLowRes")).toBe("true");
-	});
-	test("contentCalled", () => {
-		uidReset();
-		document.body.innerHTML = `<div></div>`;
-		const element = document.querySelector("div");
-
-		let preferLowCalled, resetCalled;
-		const content = {
-			setPreferLowRes() {
-				preferLowCalled = true;
-			},
-			reset() {
-				resetCalled = true;
-			},
-		};
-
-		const res = resBtn(content);
-		element.innerHTML = res.html;
-
-		res.init();
-		// @ts-ignore
-		document.querySelector("button").click();
-		expect(preferLowCalled).toBe(true);
-		expect(resetCalled).toBe(true);
-	});
-});
 
 test("fullscreen", () => {
 	uidReset();

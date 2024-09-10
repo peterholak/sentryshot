@@ -11,7 +11,7 @@ import { initBandwidthMonitor } from "./bandwidthMonitor.js";
  * @typedef {import("./components/optionsMenu.js").Button} Button
  */
 
-function newViewer($parent, monitors, hls) {
+function newViewer($parent, monitors, hls, preferLowRes) {
 	let selectedMonitors = [];
 	const isMonitorSelected = (monitor) => {
 		if (selectedMonitors.length === 0) {
@@ -26,7 +26,6 @@ function newViewer($parent, monitors, hls) {
 	};
 
 	const sortedMonitors = sortByName(monitors);
-	let preferLowRes = false;
 	let feeds = [];
 
 	/** @type {FullscreenButton[]} */
@@ -35,10 +34,6 @@ function newViewer($parent, monitors, hls) {
 	return {
 		setMonitors(input) {
 			selectedMonitors = input;
-		},
-		/** @param {boolean} value */
-		setPreferLowRes(value) {
-			preferLowRes = value;
 		},
 		reset() {
 			for (const feed of feeds) {
@@ -62,7 +57,7 @@ function newViewer($parent, monitors, hls) {
 					fullscreenBtn,
 					newFeedBtn.mute(monitor),
 				];
-				feeds.push(newFeed(hls, monitor, preferLowRes, buttons));
+				feeds.push(newFeed(hls, monitor, preferLowRes ?? false, buttons));
 			}
 
 			let html = "";
@@ -87,67 +82,17 @@ function toAbsolutePath(input) {
 	return window.location.href.replace("live", input);
 }
 
-const preferLowResByDefault = false;
-
-/**
- * @typedef {Object} ResBtnContent
- * @property {() => void} reset
- * @property {(boolean) => void} setPreferLowRes
- */
-
-/**
- * @param {ResBtnContent} content
- * @returns {Button}
- */
-function resBtn(content) {
-	const getRes = () => {
-		const saved = localStorage.getItem("preferLowRes");
-		if (saved) {
-			return saved === "true";
-		}
-		return preferLowResByDefault;
-	};
-
-	/** @type {Element} */
-	let element;
-	const setRes = (preferLow) => {
-		localStorage.setItem("preferLowRes", preferLow);
-		if (preferLow) {
-			element.textContent = "SD";
-			content.setPreferLowRes(true);
-		} else {
-			element.textContent = "HD";
-			content.setPreferLowRes(false);
-		}
-	};
-
-	const id = uniqueID();
-
-	return {
-		html: `<button id=${id} class="options-menu-btn">X</button>`,
-		init() {
-			element = document.querySelector(`#${id}`);
-			element.addEventListener("click", () => {
-				setRes(!getRes());
-				content.reset();
-			});
-			setRes(getRes());
-		},
-	};
-}
-
-function init() {
+function init(preferLowRes) {
 	// Globals.
 	//const groups = Groups; // eslint-disable-line no-undef
 	// @ts-ignore
 	const monitors = MonitorsInfo; // eslint-disable-line no-undef
 
 	const $contentGrid = document.querySelector("#content-grid");
-	const viewer = newViewer($contentGrid, monitors, Hls);
+	const viewer = newViewer($contentGrid, monitors, Hls, preferLowRes);
 
 	const buttons = [
 		newOptionsBtn.gridSize(viewer),
-		resBtn(viewer) /*newOptionsBtn.group(groups)*/,
 	];
 	const optionsMenu = newOptionsMenu(buttons);
 	document.querySelector("#options-menu").innerHTML = optionsMenu.html();
@@ -163,4 +108,4 @@ function init() {
 	});
 }
 
-export { init, newViewer, resBtn };
+export { init, newViewer };

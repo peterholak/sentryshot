@@ -6,7 +6,7 @@
 	{% include "meta" %}
 	<script type="module" defer>
 		import { init } from "./assets/scripts/live.js";
-		init();
+		init({% if flags?.hd %}false{% else %}true{% endif %});
 	</script>
 </head>
 <body>
@@ -19,7 +19,7 @@
 </body>
 
 <style>
-	#nav-link-live {
+	#nav-link-live{% if flags?.hd %}-hd{% endif %} {
 		background: var(--color1-hover);
 	}
 </style>
