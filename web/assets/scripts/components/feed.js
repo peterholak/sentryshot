@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import { uniqueID } from "../libs/common.js";
+import { togglePtzControls, hasAnyPtzControls } from "../libs/ptz.js";
 
 const hlsConfig = {
 	maxDelaySec: 2,
@@ -120,6 +121,7 @@ const newFeedBtn = {
 	mute: newMuteBtn,
 	fullscreen: newFullscreenBtn,
 	recordings: newRecordingsBtn,
+	ptz: newPtzBtn,
 };
 
 const iconMutedPath = "assets/icons/feather/volume-x.svg";
@@ -224,6 +226,39 @@ function newRecordingsBtn(path, id) {
 			</a>`,
 		init() {},
 	};
+}
+
+const iconPtzPath = "assets/icons/feather/move.svg";
+
+/**
+ * @typedef {Object} PtzButton
+ * @property {string} html
+ * @property {(id: string) => void} init
+ * @property {(monitor_ptz_capabilities: {}|undefined) => void} capabilities_ready
+ * @property {string} id
+ * @property {PtzCapabilities|undefined} capabilities
+ */
+
+/** @return {PtzButton} */
+function newPtzBtn(id) {
+	return {
+		html: `<button class="js-ptz-btn feed-btn" id="ptz-btn-${id}" style="display: none">
+			<img class="feed-btn-img icon" src="${iconPtzPath}">
+		</button>`,
+		id,
+		capabilities: undefined,
+		init($parent) {
+			const $ptzBtn = document.querySelector(`#ptz-btn-${this.id}`);
+			$ptzBtn.addEventListener("click", () => {
+				togglePtzControls($parent.parentNode, this);
+			});
+		},
+		capabilities_ready(monitors_ptz_capabilities) {
+			this.capabilities = monitors_ptz_capabilities?.[this.id];
+			const $ptzBtn = document.querySelector(`#ptz-btn-${this.id}`);
+			$ptzBtn.style.display = hasAnyPtzControls(monitors_ptz_capabilities?.[this.id]) ? "" : "none";
+		},
+	}
 }
 
 export { newFeed, newFeedBtn };

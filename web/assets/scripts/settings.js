@@ -938,6 +938,7 @@ function newSourceField(options, getField) {
  * @property {Field<string>} protocol
  * @property {Field<string>} mainStream
  * @property {Field<string>} subStream
+ * @property {Field<string>} onvifUrl
  */
 
 /** @returns {Field<string>} */
@@ -963,6 +964,16 @@ function newSourceRTSP() {
 			{
 				label: "Sub stream",
 				placeholder: "rtsp://x.x.x.x/sub (optional)",
+			}
+		),
+		onvifUrl: newField(
+			[],
+			{
+				input: "text",
+			},
+			{
+				label: "ONVIF URL",
+				placeholder: "http://x.x.x.x/onvif/device_service",
 			}
 		),
 	};

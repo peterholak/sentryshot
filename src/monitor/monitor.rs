@@ -2,6 +2,8 @@
 
 mod recorder;
 mod source;
+pub mod ptz;
+mod onvif;
 
 use recdb::RecDb;
 pub use source::{DecoderError, Source, SubscribeDecodedError};
@@ -26,6 +28,7 @@ use tokio::{
     sync::{mpsc, oneshot, Mutex},
 };
 use tokio_util::sync::CancellationToken;
+use crate::ptz::{PtzCapabilities, PtzDirection};
 
 type Monitors = HashMap<MonitorId, Arc<Monitor>>;
 pub struct Monitor {
@@ -35,6 +38,9 @@ pub struct Monitor {
     source_main_tx: mpsc::Sender<oneshot::Sender<Arc<Source>>>,
     source_sub_tx: mpsc::Sender<oneshot::Sender<Option<Arc<Source>>>>,
     send_event_tx: mpsc::Sender<Event>,
+    ptz_query_tx: mpsc::Sender<oneshot::Sender<Option<PtzCapabilities>>>,
+    // TODO: send more info in case of failure
+    ptz_move_tx: mpsc::Sender<(oneshot::Sender<()>, PtzDirection)>,
 }
 
 impl Monitor {
@@ -188,6 +194,8 @@ enum MonitorManagerRequest {
     MonitorConfigs(oneshot::Sender<MonitorConfigs>),
     Stop(oneshot::Sender<()>),
     MonitorIsRunning((oneshot::Sender<bool>, MonitorId)),
+    MonitorPtzCapabilities((oneshot::Sender<Option<PtzCapabilities>>, MonitorId)),
+    MonitorPtzMove((oneshot::Sender<()>, MonitorId, PtzDirection)),
 }
 
 #[derive(Clone)]
@@ -311,6 +319,26 @@ impl MonitorManager {
         rx.await.expect("actor should respond")
     }
 
+    pub async fn monitor_ptz_capabilities(&self, id: MonitorId) -> Option<PtzCapabilities> {
+        let (tx, rx) = oneshot::channel();
+        self.0
+            .send(MonitorManagerRequest::MonitorPtzCapabilities((tx, id)))
+            .await
+            .expect("actor should still be active");
+
+        rx.await.expect("actor should respond")
+    }
+
+    pub async fn monitor_ptz_move(&self, id: MonitorId, direction: PtzDirection) {
+        let (tx, rx) = oneshot::channel();
+        self.0
+            .send(MonitorManagerRequest::MonitorPtzMove((tx, id, direction)))
+            .await
+            .expect("actor should still be active");
+
+        rx.await.expect("actor should respond");
+    }
+
     pub async fn monitor_config(&self, monitor_id: MonitorId) -> Option<MonitorConfig> {
         let (tx, rx) = oneshot::channel();
         self.0
@@ -414,6 +442,28 @@ impl MonitorManagerState {
                 MonitorManagerRequest::MonitorIsRunning((res, monitor_id)) => {
                     res.send(self.started_monitors.get(&monitor_id).is_some())
                         .expect("caller should receive response");
+                }
+                MonitorManagerRequest::MonitorPtzCapabilities((res, monitor_id)) => {
+                    let monitor = self.started_monitors.get(&monitor_id);
+                    if let Some(monitor) = monitor {
+                        let (ptz_res_tx, ptz_res_rx) = oneshot::channel();
+                        monitor.ptz_query_tx.send(ptz_res_tx).await.expect("send ptz query");
+                        res.send(ptz_res_rx.await.expect("ptz query response"))
+                            .expect("caller should receive response");
+                    } else {
+                        res.send(None).expect("caller should receive response");
+                    }
+                },
+                MonitorManagerRequest::MonitorPtzMove((res, monitor_id, direction)) => {
+                    let monitor = self.started_monitors.get(&monitor_id);
+                    if let Some(monitor) = monitor {
+                        let (ptz_res_tx, ptz_res_rx) = oneshot::channel();
+                        monitor.ptz_move_tx.send((ptz_res_tx, direction)).await.expect("send ptz move");
+                        ptz_res_rx.await.expect("ptz move response");
+                        res.send(()).expect("caller should receive response");
+                    } else {
+                        res.send(()).expect("caller should receive response");
+                    }
                 }
             }
         }
@@ -562,7 +612,7 @@ impl MonitorManagerState {
         let monitor_token = self.token.child_token();
         let (shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(1);
 
-        let (source_main, source_sub) = match config.source() {
+        let (source_main, source_sub, onvif_url) = match config.source() {
             SourceConfig::Rtsp(conf) => {
                 let source_main = SourceRtsp::new(
                     monitor_token.child_token(),
@@ -585,7 +635,7 @@ impl MonitorManagerState {
                     StreamType::Sub,
                 );
 
-                (Arc::new(source_main), source_sub.map(Arc::new))
+                (Arc::new(source_main), source_sub.map(Arc::new), conf.onvif_url.clone())
             }
         };
 
@@ -602,6 +652,8 @@ impl MonitorManagerState {
 
         let (source_main_tx, mut source_main_rx) = mpsc::channel(1);
         let (source_sub_tx, mut source_sub_rx) = mpsc::channel(1);
+        let (ptz_query_tx, mut ptz_query_rx) = mpsc::channel(1);
+        let (ptz_move_tx, mut ptz_move_rx) = mpsc::channel(1);
 
         let monitor = Arc::new(Monitor {
             token: monitor_token.clone(),
@@ -610,12 +662,21 @@ impl MonitorManagerState {
             source_main_tx,
             source_sub_tx,
             send_event_tx,
+            ptz_query_tx,
+            ptz_move_tx,
         });
 
         // Monitor actor.
         let monitor_token2 = monitor_token.clone();
         tokio::spawn(async move {
             let _shutdown_complete = shutdown_complete_tx;
+
+            let ptz_capabilities = match onvif_url {
+                Some(ref onvif_url) =>
+                    onvif::discover_ptz_capabilities(onvif_url).await.ok(),
+                None => None,
+            };
+
             loop {
                 tokio::select! {
                     () = monitor_token2.cancelled() => return,
@@ -630,6 +691,25 @@ impl MonitorManagerState {
                             return
                         };
                         _ = res.send(source_sub.clone());
+                    },
+                    res = ptz_query_rx.recv() => {
+                        let Some(res) = res else {
+                            return
+                        };
+                        _ = res.send(ptz_capabilities.clone());
+                    },
+                    res = ptz_move_rx.recv() => {
+                        let Some((res_tx, direction)) = res else {
+                            return
+                        };
+                        let Some(ref onvif_url) = onvif_url else {
+                            return
+                        };
+                        let Some(ref ptz_capabilities) = ptz_capabilities else {
+                            return
+                        };
+                        let _ = onvif::move_ptz(onvif_url, direction, ptz_capabilities).await;
+                        _ = res_tx.send(());
                     },
                 };
             }
@@ -829,6 +909,7 @@ mod tests {
                 protocol: Protocol::Tcp,
                 main_stream: "rtsp://x1".parse().unwrap(),
                 sub_stream: None,
+                onvif_url: None,
             }),
             json!({
                 "id": "new",
@@ -881,6 +962,7 @@ mod tests {
                 protocol: Protocol::Tcp,
                 main_stream: "rtsp://x1".parse().unwrap(),
                 sub_stream: None,
+                onvif_url: None,
             }),
             json!({
                 "id": "1",
@@ -1012,6 +1094,7 @@ mod tests {
                         protocol: Protocol::Tcp,
                         main_stream: "rtsp://x1".parse().unwrap(),
                         sub_stream: None,
+                        onvif_url: None,
                     }),
                     json!({
                         "id": "1",
@@ -1042,6 +1125,7 @@ mod tests {
                         protocol: Protocol::Udp,
                         main_stream: "rtsp://x1".parse().unwrap(),
                         sub_stream: Some("rtsp://x2".parse().unwrap()),
+                        onvif_url: None,
                     }),
                     json!({
                         "id": "2",

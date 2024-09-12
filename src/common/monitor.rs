@@ -188,6 +188,11 @@ pub struct SourceRtspConfig {
 
     #[serde(rename = "subStream")]
     pub sub_stream: Option<RtspUrl>,
+
+    // this really should be its own source type instead,
+    // but for now I only need it for PTZ, so sticking with what already exists
+    #[serde(rename = "onvifUrl")]
+    pub onvif_url: Option<Url>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

@@ -1106,6 +1106,14 @@ img {
 	border-radius: 0.2rem;
 }
 
+.ptz-menu {
+	bottom: 0;
+	margin-bottom: calc(5% + 1rem);
+	background: var(--color1);
+	border: none;
+	border-radius: 0.2rem;
+}
+
 #bandwidth-monitor .bandwidth-icon {
 	width: 0.5rem;
 }

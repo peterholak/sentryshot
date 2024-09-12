@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import Hls from "./vendor/hls.js";
-import { uniqueID, sortByName } from "./libs/common.js";
+import { sortByName } from "./libs/common.js";
 import { newOptionsMenu, newOptionsBtn } from "./components/optionsMenu.js";
 import { newFeed, newFeedBtn } from "./components/feed.js";
 import { initBandwidthMonitor } from "./bandwidthMonitor.js";
+import { fetchAllPtzCapabilities } from "./libs/ptz.js";
 
 /**
  * @typedef {import("./components/feed.js").FullscreenButton} FullscreenButton
+ * @typedef {import("./components/feed.js").PtzButton} PtzButton
  * @typedef {import("./components/optionsMenu.js").Button} Button
  */
 
@@ -30,6 +32,14 @@ function newViewer($parent, monitors, hls, preferLowRes) {
 
 	/** @type {FullscreenButton[]} */
 	let fullscreenButtons = [];
+	/** @type {PtzButton[]} */
+	let ptzButtons = [];
+
+	let ptzCapabilities = {};
+	fetchAllPtzCapabilities(monitors).then(result => {
+		ptzCapabilities = result;
+		ptzButtons.forEach(btn => btn.capabilities_ready(result));
+	});
 
 	return {
 		setMonitors(input) {
@@ -52,10 +62,13 @@ function newViewer($parent, monitors, hls, preferLowRes) {
 
 				const fullscreenBtn = newFeedBtn.fullscreen();
 				fullscreenButtons.push(fullscreenBtn);
+				const ptzBtn = newFeedBtn.ptz(monitor.id);
+				ptzButtons.push(ptzBtn);
 				const buttons = [
 					newFeedBtn.recordings(recordingsPath, monitor["id"]),
 					fullscreenBtn,
 					newFeedBtn.mute(monitor),
+					ptzBtn,
 				];
 				feeds.push(newFeed(hls, monitor, preferLowRes ?? false, buttons));
 			}
@@ -74,12 +87,12 @@ function newViewer($parent, monitors, hls, preferLowRes) {
 			for (const btn of fullscreenButtons) {
 				btn.exitFullscreen();
 			}
-		},
+		}
 	};
 }
 
 function toAbsolutePath(input) {
-	return window.location.href.replace("live", input);
+	return window.location.href.replace(/live(_[^#?/]+)?/, input);
 }
 
 function init(preferLowRes) {

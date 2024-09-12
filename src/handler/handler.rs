@@ -24,7 +24,7 @@ use log::{
     log_db::{LogDbHandle, LogQuery},
     Logger,
 };
-use monitor::{MonitorDeleteError, MonitorManager};
+use monitor::{MonitorDeleteError, MonitorManager, ptz::PtzCapabilities};
 use recdb::{DeleteRecordingError, RecDb, RecDbQuery, RecordingResponse};
 use recording::{new_video_reader, VideoCache};
 use rust_embed::EmbeddedFiles;
@@ -33,6 +33,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use thiserror::Error;
 use tokio::sync::{broadcast::error::RecvError, Mutex};
 use tokio_util::io::ReaderStream;
+use monitor::ptz::PtzDirection;
 use vod::{CreateVodReaderError, VodCache, VodQuery, VodReader};
 use web::{serve_mp4_content, Templater};
 
@@ -525,4 +526,26 @@ pub async fn recording_video_handler(
         video,
     )
     .await
+}
+
+pub async fn ptz_capabilities_handler(
+    State(monitor_manager): State<MonitorManager>,
+    Path(monitor_id): Path<MonitorId>,
+) -> Json<Option<PtzCapabilities>> {
+    let capabilities = monitor_manager.monitor_ptz_capabilities(monitor_id).await;
+    Json(capabilities)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PtzMovePayload {
+    pub direction: PtzDirection,
+}
+
+pub async fn ptz_move_handler(
+    State(monitor_manager): State<MonitorManager>,
+    Path(monitor_id): Path<MonitorId>,
+    Json(payload): Json<PtzMovePayload>,
+) -> Json<bool> {
+    monitor_manager.monitor_ptz_move(monitor_id, payload.direction).await;
+    Json(true)
 }

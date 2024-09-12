@@ -1,5 +1,4 @@
 let totalBytes = 0;
-let startTime = performance.now();
 let updateInterval;
 let recentBandwidths = [];
 let originalFetch;
@@ -37,7 +36,6 @@ export function initBandwidthMonitor() {
         return;
     }
 
-    startTime = performance.now();
     totalBytes = 0;
     recentBandwidths = [];
 

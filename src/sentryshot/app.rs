@@ -419,6 +419,20 @@ impl App {
                     })
                     .route_layer(middleware::from_fn_with_state(self.auth.clone(), user))
                     .with_state(self.auth.clone()),
+            )
+            .route(
+                "/api/ptz/capabilities/*id",
+                get(ptz_capabilities_handler)
+                    .with_state(self.monitor_manager.clone())
+                    .route_layer(middleware::from_fn_with_state(self.auth.clone(), user))
+                    .with_state(self.auth.clone()),
+            )
+            .route(
+                "/api/ptz/move/*id",
+                post(ptz_move_handler)
+                    .with_state(self.monitor_manager.clone())
+                    .route_layer(middleware::from_fn_with_state(self.auth.clone(), user))
+                    .with_state(self.auth.clone()),
             );
 
         self.router = plugin_manager.router_hooks(router);

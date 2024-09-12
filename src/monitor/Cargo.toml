@@ -21,20 +21,25 @@ recdb.path = "../recdb"
 recording.path = "../recording"
 
 async-trait.workspace = true
+base64.workspace = true
 bytesize.workspace = true
+chrono.workspace = true
 futures.workspace = true
 jpeg-encoder.workspace = true
+rand.workspace = true
 retina.workspace = true
+reqwest.workspace = true
 sentryshot_convert.workspace = true
 sentryshot_ffmpeg_h264.workspace = true
 sentryshot_util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha1.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 url.workspace = true
-
+xml-rs.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

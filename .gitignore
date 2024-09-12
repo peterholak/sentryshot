@@ -16,3 +16,4 @@
 *.backup
 /.vscode
 .aider*
+*.http
