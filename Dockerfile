@@ -25,6 +25,7 @@ RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazeli
 RUN chmod +x bazelisk-linux-$TARGETARCH
 RUN mv bazelisk-linux-$TARGETARCH /usr/bin/bazel
 WORKDIR /deps/libedgetpu
+RUN bash -c 'echo 7.6.1 > .bazelversion'
 RUN bash -c 'source /edgetpu-env && CPU=$LIBEDGETPU_ARCH make -j$BUILD_CONCURRENCY'
 
 RUN mkdir /deps/tflite_build
