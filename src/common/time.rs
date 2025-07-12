@@ -78,7 +78,7 @@ impl UnixNano {
     pub fn as_chrono(&self) -> Option<NaiveDateTime> {
         let sec = self.0 / SECOND;
         let nanosec = self.0 % SECOND;
-        NaiveDateTime::from_timestamp_opt(sec, nanosec as u32)
+        chrono::DateTime::from_timestamp(sec, nanosec as u32).map(|t| t.naive_utc())
     }
 }
 

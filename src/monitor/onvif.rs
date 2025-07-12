@@ -85,7 +85,7 @@ async fn move_relative(url: &Url, profile_token: &str, direction: PtzDirection) 
     // TODO: parse errors, etc.
 }
 
-async fn move_absolute(url: &Url, profile_token: &str, direction: PtzDirection) {
+async fn move_absolute(_url: &Url, _profile_token: &str, _direction: PtzDirection) {
     todo!("will need to split into 2 requests")
 }
 

@@ -90,7 +90,7 @@ impl NoneAuth {
             rt_handle: rt_handle.clone(),
         };
 
-        let csrf_token = rand::thread_rng()
+        let csrf_token = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(32)
             .map(char::from)
@@ -255,7 +255,7 @@ async fn generate_password_hash(rt_handle: &Handle, plain_password: String) -> S
 
 // Generates a CSRF-token.
 fn gen_token() -> String {
-    rand::thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(32)
         .map(char::from)
