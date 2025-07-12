@@ -127,7 +127,7 @@ impl<R: AsyncRead + AsyncSeek> AsyncBufRead for RevBufReader<R> {
     fn poll_fill_buf<'a>(
         mut self: Pin<&'a mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<std::io::Result<&[u8]>> {
+    ) -> Poll<std::io::Result<&'a [u8]>> {
         let read = |s: Pin<&'a mut Self>,
                     cx: &mut Context,
                     new_pos: usize|

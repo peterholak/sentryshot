@@ -8,7 +8,7 @@ use log::{
     LogEntryWithTime, UnixMicro,
 };
 use rand::{
-    distributions::{Alphanumeric, DistString},
+    distr::{Alphanumeric, SampleString},
     Rng, SeedableRng,
 };
 use rand_chacha::ChaCha8Rng;

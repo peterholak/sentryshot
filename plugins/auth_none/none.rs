@@ -15,7 +15,7 @@ use plugin::{
     types::{NewAuthError, NewAuthFn},
     Application, Plugin, PreLoadPlugin,
 };
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use std::{
     collections::HashMap,
     fs::{self, File},
