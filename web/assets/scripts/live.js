@@ -69,6 +69,7 @@ function newViewer($parent, monitors, hls, preferLowRes) {
 					fullscreenBtn,
 					newFeedBtn.mute(monitor),
 					ptzBtn,
+					newFeedBtn.reset(monitor.id),
 				];
 				feeds.push(newFeed(hls, monitor, preferLowRes ?? false, buttons));
 			}

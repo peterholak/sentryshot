@@ -122,7 +122,29 @@ const newFeedBtn = {
 	fullscreen: newFullscreenBtn,
 	recordings: newRecordingsBtn,
 	ptz: newPtzBtn,
+	reset: newResetBtn,
 };
+
+/**
+ * @param {string} id
+ * @return {Button}
+ */
+function newResetBtn(id) {
+	return {
+		html: `
+			<button class="js-reset-btn feed-btn">
+				<span class="feed-btn-img" style="font-size: 0.9rem; filter: invert(75%); position: relative; bottom: 0.2rem;">⟳</span>
+			</button>`,
+		init($parent) {
+			const $btn = $parent.querySelector(".js-reset-btn");
+			$btn.addEventListener("click", () => {
+				fetch(`/api/monitor/restart?id=${id}`, {
+					method: "POST",
+				});
+			});
+		},
+	};
+}
 
 const iconMutedPath = "assets/icons/feather/volume-x.svg";
 const iconUnmutedPath = "assets/icons/feather/volume.svg";
