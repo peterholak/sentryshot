@@ -8,12 +8,7 @@ mod model;
 use crate::{config::TfliteConfig, detector::DetectorManager};
 use async_trait::async_trait;
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    middleware,
-    response::{IntoResponse, Response},
-    routing::patch,
-    Router,
+    body::Bytes, extract::{Path, State}, http::StatusCode, middleware, response::{IntoResponse, Response}, routing::patch, Router
 };
 use common::{
     recording::{vertex_inside_poly2, FrameRateLimiter},
@@ -23,8 +18,10 @@ use common::{
 };
 use config::{set_enable, Crop, Mask};
 use detector::{DetectError, Detector, DetectorName, Thresholds};
-use hyper::{body::HttpBody, http::uri::InvalidUri};
+use http_body_util::BodyExt;
+use hyper::{http::uri::InvalidUri};
 use hyper_rustls::HttpsConnectorBuilder;
+use hyper_util::rt::TokioExecutor;
 use monitor::{DecoderError, Monitor, MonitorManager, Source, SubscribeDecodedError};
 use plugin::{
     types::{admin, Assets},
@@ -47,12 +44,12 @@ use tokio::{io::AsyncWriteExt, runtime::Handle, sync::mpsc};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn version() -> String {
     plugin::get_version()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn pre_load() -> Box<dyn PreLoadPlugin> {
     Box::new(PreLoadAuthNone)
 }
@@ -64,7 +61,7 @@ impl PreLoadPlugin for PreLoadAuthNone {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn load(app: &dyn Application) -> Arc<dyn Plugin> {
     // This is very dirty and may break horribly.
     // Tokio normally forbids multiple runtimes, but plugins have a different
@@ -738,10 +735,10 @@ pub enum FetchError {
     ParseUri(#[from] InvalidUri),
 
     #[error("get: {0}")]
-    Get(hyper::Error),
+    Get(hyper_util::client::legacy::Error),
 
-    #[error("Chunk: {0}")]
-    Chunk(hyper::Error),
+    #[error("body")]
+    Body(#[from] hyper::Error),
 }
 
 struct TfliteLogger {
@@ -765,14 +762,10 @@ async fn fetch(url: &Url) -> Result<Vec<u8>, FetchError> {
         .https_or_http()
         .enable_http1()
         .build();
-    let client = hyper::client::Client::builder().build::<_, hyper::Body>(https);
-    let mut res = client.get(uri).await.map_err(Get)?;
-    let mut body = Vec::new();
-    while let Some(chunk) = res.body_mut().data().await {
-        let chunk = chunk.map_err(Chunk)?;
-        body.write_all(&chunk).await.expect("write");
-    }
-    Ok(body)
+    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+        .build::<_, http_body_util::Full<Bytes>>(https);
+    let res = client.get(uri).await.map_err(Get)?;
+    Ok(res.collect().await?.to_bytes().to_vec())
 }
 
 struct Fetch;

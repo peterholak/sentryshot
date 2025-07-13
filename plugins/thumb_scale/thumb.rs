@@ -7,12 +7,12 @@ use sentryshot_scale::{Frame, Scaler};
 use serde::Deserialize;
 use std::{borrow::Cow, num::NonZeroU16, sync::Arc};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn version() -> String {
     plugin::get_version()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn load(app: &dyn Application) -> Arc<dyn Plugin> {
     Arc::new(ThumbScalePlugin {
         logger: app.logger(),

@@ -27,12 +27,12 @@ use std::{
 };
 use tokio::{runtime::Handle, sync::Mutex};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn version() -> String {
     plugin::get_version()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn pre_load() -> Box<dyn PreLoadPlugin> {
     Box::new(PreLoadAuthBasic)
 }
@@ -50,7 +50,7 @@ impl PreLoadPlugin for PreLoadAuthBasic {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn load(app: &dyn Application) -> Arc<dyn Plugin> {
     Arc::new(AuthBasicPlugin { auth: app.auth() })
 }

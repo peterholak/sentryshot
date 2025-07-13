@@ -22,8 +22,10 @@ plugin.path = "../../src/plugin"
 
 async-trait.workspace = true
 axum.workspace = true
+http-body-util.workspace = true
 hyper.workspace = true
 hyper-rustls.workspace = true
+hyper-util.workspace = true
 sha2.workspace = true
 sentryshot_convert.workspace = true
 sentryshot_filter.workspace = true

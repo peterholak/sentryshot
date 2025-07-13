@@ -36,12 +36,12 @@ use tokio::{runtime::Handle, sync::mpsc};
 use tokio_util::sync::CancellationToken;
 use zone::Zones;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn version() -> String {
     plugin::get_version()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn pre_load() -> Box<dyn PreLoadPlugin> {
     Box::new(PreLoadAuthNone)
 }
@@ -53,7 +53,7 @@ impl PreLoadPlugin for PreLoadAuthNone {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "Rust" fn load(app: &dyn Application) -> Arc<dyn Plugin> {
     Arc::new(MotionPlugin {
         rt_handle: app.rt_handle(),

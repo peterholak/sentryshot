@@ -262,13 +262,13 @@ pub type uintmax_t = __uintmax_t;
 pub struct CDetector {
     _unused: [u8; 0],
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_detector_allocate() -> *mut CDetector;
 }
 pub const edgetpu_device_type_EDGETPU_APEX_PCI: edgetpu_device_type = 0;
 pub const edgetpu_device_type_EDGETPU_APEX_USB: edgetpu_device_type = 1;
 pub type edgetpu_device_type = ::std::os::raw::c_uint;
-extern "C" {
+unsafe extern "C" {
     pub fn c_detector_load_model(
         d: *mut CDetector,
         model_path: *const ::std::os::raw::c_char,
@@ -277,7 +277,7 @@ extern "C" {
         device_type: edgetpu_device_type,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_detector_detect(
         d: *mut CDetector,
         buf: *const u8,
@@ -292,7 +292,7 @@ extern "C" {
         t3_size: *mut usize,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_detector_free(d: *mut CDetector);
 }
 #[repr(C)]
@@ -336,13 +336,13 @@ fn bindgen_test_layout_edgetpu_device() {
         )
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_list_devices(num_devices: *mut usize) -> *mut edgetpu_device;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_free_devices(dev: *mut edgetpu_device);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_probe_device(
         ret: *mut ::std::os::raw::c_int,
         device_bus_number: ::std::os::raw::c_int,
@@ -350,6 +350,6 @@ extern "C" {
         device_ports: *const u8,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn c_poke_devices();
 }

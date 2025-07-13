@@ -9,6 +9,7 @@ fn main() {
     cc::Build::new()
         .file("src/wrapper.c")
         .include(Path::new("./src/includes"))
+        .include(Path::new("/opt/homebrew/include"))
         .warnings_into_errors(true)
         .compile("wrapper");
 }
