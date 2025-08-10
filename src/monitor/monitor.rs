@@ -26,9 +26,27 @@ use thiserror::Error;
 use tokio::{
     io::AsyncWriteExt,
     sync::{mpsc, oneshot, Mutex},
+    time::{sleep, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 use crate::ptz::{PtzCapabilities, PtzDirection};
+
+#[derive(Debug, Clone)]
+pub struct SleepModeState {
+    pub is_sleeping: bool,
+    pub last_activity: Instant,
+    pub active_streams: u32,
+}
+
+impl Default for SleepModeState {
+    fn default() -> Self {
+        Self {
+            is_sleeping: false,
+            last_activity: Instant::now(),
+            active_streams: 0,
+        }
+    }
+}
 
 type Monitors = HashMap<MonitorId, Arc<Monitor>>;
 pub struct Monitor {
@@ -41,6 +59,8 @@ pub struct Monitor {
     ptz_query_tx: mpsc::Sender<oneshot::Sender<Option<PtzCapabilities>>>,
     // TODO: send more info in case of failure
     ptz_move_tx: mpsc::Sender<(oneshot::Sender<()>, PtzDirection)>,
+    sleep_state: Arc<Mutex<SleepModeState>>,
+    sleep_control_tx: mpsc::Sender<SleepModeRequest>,
 }
 
 impl Monitor {
@@ -107,6 +127,52 @@ impl Monitor {
             () = self.token.cancelled() => {},
             _ = self.send_event_tx.send(event) => {},
         }
+    }
+
+    pub async fn start_streaming(&self) {
+        let mut state = self.sleep_state.lock().await;
+        state.active_streams += 1;
+        state.last_activity = Instant::now();
+        if state.is_sleeping && state.active_streams > 0 {
+            drop(state);
+            _ = self.sleep_control_tx.send(SleepModeRequest::WakeUp).await;
+        }
+    }
+
+    pub async fn stop_streaming(&self) {
+        let mut state = self.sleep_state.lock().await;
+        if state.active_streams > 0 {
+            state.active_streams -= 1;
+        }
+        state.last_activity = Instant::now();
+    }
+
+    pub async fn mark_recording_activity(&self, is_recording: bool) {
+        let mut state = self.sleep_state.lock().await;
+        state.last_activity = Instant::now();
+        if is_recording && state.is_sleeping {
+            drop(state);
+            _ = self.sleep_control_tx.send(SleepModeRequest::WakeUp).await;
+        }
+    }
+
+    pub async fn should_sleep(&self) -> bool {
+        let state = self.sleep_state.lock().await;
+        !state.is_sleeping && 
+        state.active_streams == 0 &&
+        !self.config.always_record() &&
+        state.last_activity.elapsed() > Duration::from_secs(180) && // 3 minutes
+        !self.has_object_detection_configured()
+    }
+
+    fn has_object_detection_configured(&self) -> bool {
+        // TODO: Check if motion detection or tflite detection is enabled
+        // For now, assume no object detection is configured
+        false
+    }
+
+    pub async fn get_sleep_state(&self) -> SleepModeState {
+        self.sleep_state.lock().await.clone()
     }
 }
 
@@ -182,6 +248,15 @@ pub enum MonitorSetAndRestartError {
     Restart(MonitorRestartError),
 }
 
+#[derive(Debug)]
+enum SleepModeRequest {
+    StartStream,
+    StopStream,
+    StartRecording,
+    StopRecording,
+    WakeUp,
+}
+
 #[rustfmt::skip]
 enum MonitorManagerRequest {
     StartMonitors((oneshot::Sender<()>, DynMonitorHooks)),
@@ -196,6 +271,8 @@ enum MonitorManagerRequest {
     MonitorIsRunning((oneshot::Sender<bool>, MonitorId)),
     MonitorPtzCapabilities((oneshot::Sender<Option<PtzCapabilities>>, MonitorId)),
     MonitorPtzMove((oneshot::Sender<()>, MonitorId, PtzDirection)),
+    StreamingActivity((MonitorId, bool)), // (monitor_id, is_streaming)
+    WakeUpMonitors,
 }
 
 #[derive(Clone)]
@@ -378,6 +455,20 @@ impl MonitorManager {
 
         rx.await.expect("actor should respond")
     }
+
+    pub async fn streaming_activity(&self, monitor_id: MonitorId, is_streaming: bool) {
+        self.0
+            .send(MonitorManagerRequest::StreamingActivity((monitor_id, is_streaming)))
+            .await
+            .expect("actor should still be active");
+    }
+
+    pub async fn wake_up_monitors(&self) {
+        self.0
+            .send(MonitorManagerRequest::WakeUpMonitors)
+            .await
+            .expect("actor should still be active");
+    }
 }
 
 struct MonitorManagerState {
@@ -465,6 +556,25 @@ impl MonitorManagerState {
                         res.send(()).expect("caller should receive response");
                     }
                 }
+                MonitorManagerRequest::StreamingActivity((monitor_id, is_streaming)) => {
+                    if let Some(monitor) = self.started_monitors.get(&monitor_id) {
+                        if is_streaming {
+                            monitor.start_streaming().await;
+                        } else {
+                            monitor.stop_streaming().await;
+                        }
+                    }
+                }
+                MonitorManagerRequest::WakeUpMonitors => {
+                    for monitor in self.started_monitors.values() {
+                        let mut state = monitor.sleep_state.lock().await;
+                        if state.is_sleeping {
+                            state.is_sleeping = false;
+                            state.last_activity = Instant::now();
+                            _ = monitor.sleep_control_tx.send(SleepModeRequest::WakeUp).await;
+                        }
+                    }
+                }
             }
         }
     }
@@ -476,6 +586,30 @@ impl MonitorManagerState {
                 self.started_monitors.insert(id.to_owned(), monitor);
             }
         }
+
+        // Start sleep mode monitoring task
+        let monitors_for_sleep = self.started_monitors.clone();
+        let logger_for_sleep = self.logger.clone();
+        let sleep_token = self.token.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                tokio::select! {
+                    () = sleep_token.cancelled() => return,
+                    _ = interval.tick() => {
+                        for (id, monitor) in &monitors_for_sleep {
+                            if monitor.should_sleep().await {
+                                let mut state = monitor.sleep_state.lock().await;
+                                if !state.is_sleeping {
+                                    state.is_sleeping = true;
+                                    log_monitor(&logger_for_sleep, LogLevel::Info, id, "entering sleep mode");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // Stops monitor (if running) and starts it again.
@@ -654,6 +788,9 @@ impl MonitorManagerState {
         let (source_sub_tx, mut source_sub_rx) = mpsc::channel(1);
         let (ptz_query_tx, mut ptz_query_rx) = mpsc::channel(1);
         let (ptz_move_tx, mut ptz_move_rx) = mpsc::channel(1);
+        let (sleep_control_tx, mut sleep_control_rx) = mpsc::channel(1);
+
+        let sleep_state = Arc::new(Mutex::new(SleepModeState::default()));
 
         let monitor = Arc::new(Monitor {
             token: monitor_token.clone(),
@@ -664,10 +801,14 @@ impl MonitorManagerState {
             send_event_tx,
             ptz_query_tx,
             ptz_move_tx,
+            sleep_state: sleep_state.clone(),
+            sleep_control_tx,
         });
 
         // Monitor actor.
         let monitor_token2 = monitor_token.clone();
+        let logger_for_monitor = self.logger.clone();
+        let config_for_monitor = config.clone();
         tokio::spawn(async move {
             let _shutdown_complete = shutdown_complete_tx;
 
@@ -677,6 +818,8 @@ impl MonitorManagerState {
                 None => None,
             };
 
+            let mut source_sleeping = false;
+
             loop {
                 tokio::select! {
                     () = monitor_token2.cancelled() => return,
@@ -684,13 +827,27 @@ impl MonitorManagerState {
                         let Some(res) = res else {
                             return
                         };
-                        _ = res.send(source_main.clone());
+                        if !source_sleeping {
+                            _ = res.send(source_main.clone());
+                        } else {
+                            // Source is sleeping, wake it up first
+                            source_sleeping = false;
+                            log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "waking up from sleep mode");
+                            _ = res.send(source_main.clone());
+                        }
                     },
                     res = source_sub_rx.recv() => {
                         let Some(res) = res else {
                             return
                         };
-                        _ = res.send(source_sub.clone());
+                        if !source_sleeping {
+                            _ = res.send(source_sub.clone());
+                        } else {
+                            // Source is sleeping, wake it up first
+                            source_sleeping = false;
+                            log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "waking up from sleep mode");
+                            _ = res.send(source_sub.clone());
+                        }
                     },
                     res = ptz_query_rx.recv() => {
                         let Some(res) = res else {
@@ -711,7 +868,30 @@ impl MonitorManagerState {
                         let _ = onvif::move_ptz(onvif_url, direction, ptz_capabilities).await;
                         _ = res_tx.send(());
                     },
+                    sleep_req = sleep_control_rx.recv() => {
+                        let Some(req) = sleep_req else {
+                            return
+                        };
+                        match req {
+                            SleepModeRequest::WakeUp => {
+                                if source_sleeping {
+                                    source_sleeping = false;
+                                    log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "woken up from sleep mode");
+                                }
+                            },
+                            _ => {}
+                        }
+                    },
                 };
+                
+                // Check if we should go to sleep
+                {
+                    let state = sleep_state.lock().await;
+                    if state.is_sleeping && !source_sleeping {
+                        source_sleeping = true;
+                        log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "source going to sleep");
+                    }
+                }
             }
         });
 
