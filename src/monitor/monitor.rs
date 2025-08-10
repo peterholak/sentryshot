@@ -26,7 +26,7 @@ use thiserror::Error;
 use tokio::{
     io::AsyncWriteExt,
     sync::{mpsc, oneshot, Mutex},
-    time::{Duration, Instant},
+    time::{sleep, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 use crate::ptz::{PtzCapabilities, PtzDirection};
@@ -36,17 +36,14 @@ pub struct SleepModeState {
     pub is_sleeping: bool,
     pub last_activity: Instant,
     pub active_streams: u32,
-    pub last_stream_activity: Instant,
 }
 
 impl Default for SleepModeState {
     fn default() -> Self {
-        let now = Instant::now();
         Self {
             is_sleeping: false,
-            last_activity: now,
+            last_activity: Instant::now(),
             active_streams: 0,
-            last_stream_activity: now,
         }
     }
 }
@@ -135,9 +132,7 @@ impl Monitor {
     pub async fn start_streaming(&self) {
         let mut state = self.sleep_state.lock().await;
         state.active_streams += 1;
-        let now = Instant::now();
-        state.last_activity = now;
-        state.last_stream_activity = now;
+        state.last_activity = Instant::now();
         if state.is_sleeping && state.active_streams > 0 {
             drop(state);
             _ = self.sleep_control_tx.send(SleepModeRequest::WakeUp).await;
@@ -152,22 +147,6 @@ impl Monitor {
         state.last_activity = Instant::now();
     }
 
-    pub async fn update_stream_activity(&self) {
-        let mut state = self.sleep_state.lock().await;
-        let now = Instant::now();
-        state.last_activity = now;
-        state.last_stream_activity = now;
-        
-        // If no active streams, this is a new connection - increment counter
-        if state.active_streams == 0 {
-            state.active_streams = 1;
-            if state.is_sleeping {
-                drop(state);
-                _ = self.sleep_control_tx.send(SleepModeRequest::WakeUp).await;
-            }
-        }
-    }
-
     pub async fn mark_recording_activity(&self, is_recording: bool) {
         let mut state = self.sleep_state.lock().await;
         state.last_activity = Instant::now();
@@ -177,7 +156,7 @@ impl Monitor {
         }
     }
 
-    pub async fn should_sleep(&self, logger: &DynLogger) -> bool {
+    pub async fn should_sleep(&self) -> bool {
         let state = self.sleep_state.lock().await;
         !state.is_sleeping && 
         state.active_streams == 0 &&
@@ -271,6 +250,10 @@ pub enum MonitorSetAndRestartError {
 
 #[derive(Debug)]
 enum SleepModeRequest {
+    StartStream,
+    StopStream,
+    StartRecording,
+    StopRecording,
     WakeUp,
 }
 
@@ -289,7 +272,6 @@ enum MonitorManagerRequest {
     MonitorPtzCapabilities((oneshot::Sender<Option<PtzCapabilities>>, MonitorId)),
     MonitorPtzMove((oneshot::Sender<()>, MonitorId, PtzDirection)),
     StreamingActivity((MonitorId, bool)), // (monitor_id, is_streaming)
-    UpdateStreamActivity(MonitorId),
     WakeUpMonitors,
 }
 
@@ -481,13 +463,6 @@ impl MonitorManager {
             .expect("actor should still be active");
     }
 
-    pub async fn update_stream_activity(&self, monitor_id: MonitorId) {
-        self.0
-            .send(MonitorManagerRequest::UpdateStreamActivity(monitor_id))
-            .await
-            .expect("actor should still be active");
-    }
-
     pub async fn wake_up_monitors(&self) {
         self.0
             .send(MonitorManagerRequest::WakeUpMonitors)
@@ -590,11 +565,6 @@ impl MonitorManagerState {
                         }
                     }
                 }
-                MonitorManagerRequest::UpdateStreamActivity(monitor_id) => {
-                    if let Some(monitor) = self.started_monitors.get(&monitor_id) {
-                        monitor.update_stream_activity().await;
-                    }
-                }
                 MonitorManagerRequest::WakeUpMonitors => {
                     for monitor in self.started_monitors.values() {
                         let mut state = monitor.sleep_state.lock().await;
@@ -628,18 +598,7 @@ impl MonitorManagerState {
                     () = sleep_token.cancelled() => return,
                     _ = interval.tick() => {
                         for (id, monitor) in &monitors_for_sleep {
-                            // Check for stream timeouts (30 seconds without HLS requests)
-                            {
-                                let mut state = monitor.sleep_state.lock().await;
-                                if state.active_streams > 0 && 
-                                   state.last_stream_activity.elapsed() > Duration::from_secs(30) {
-                                    log_monitor(&logger_for_sleep, LogLevel::Info, id, &format!("stream timeout, reducing active streams from {} to 0", state.active_streams));
-                                    state.active_streams = 0;
-                                    state.last_activity = Instant::now();
-                                }
-                            }
-                            
-                            if monitor.should_sleep(&logger_for_sleep).await {
+                            if monitor.should_sleep().await {
                                 let mut state = monitor.sleep_state.lock().await;
                                 if !state.is_sleeping {
                                     state.is_sleeping = true;
@@ -873,11 +832,6 @@ impl MonitorManagerState {
                         } else {
                             // Source is sleeping, wake it up first
                             source_sleeping = false;
-                            {
-                                let mut state = sleep_state.lock().await;
-                                state.is_sleeping = false;
-                                state.last_activity = Instant::now();
-                            }
                             log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "waking up from sleep mode");
                             _ = res.send(source_main.clone());
                         }
@@ -891,11 +845,6 @@ impl MonitorManagerState {
                         } else {
                             // Source is sleeping, wake it up first
                             source_sleeping = false;
-                            {
-                                let mut state = sleep_state.lock().await;
-                                state.is_sleeping = false;
-                                state.last_activity = Instant::now();
-                            }
                             log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "waking up from sleep mode");
                             _ = res.send(source_sub.clone());
                         }
@@ -927,11 +876,6 @@ impl MonitorManagerState {
                             SleepModeRequest::WakeUp => {
                                 if source_sleeping {
                                     source_sleeping = false;
-                                    {
-                                        let mut state = sleep_state.lock().await;
-                                        state.is_sleeping = false;
-                                        state.last_activity = Instant::now();
-                                    }
                                     log_monitor(&logger_for_monitor, LogLevel::Info, config_for_monitor.id(), "woken up from sleep mode");
                                 }
                             },
