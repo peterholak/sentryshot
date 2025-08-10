@@ -158,15 +158,16 @@ pub async fn hls_handler(
         }
     };
 
+    // Extract monitor ID from muxer name and notify monitor manager about streaming activity
+    let monitor_id_str = muxer_name.strip_suffix("_sub").unwrap_or(&muxer_name);
+    if let Ok(monitor_id) = monitor_id_str.to_owned().try_into() {
+        // Use update_stream_activity for ongoing stream requests, start_streaming only on first connection
+        state.monitor_manager.update_stream_activity(monitor_id).await;
+    }
+    
     let Some(Some(muxer)) = state.hls_server.muxer_by_name(muxer_name).await else {
         return (StatusCode::NOT_FOUND, headers).into_response();
     };
-    
-    // Extract monitor ID from muxer name and notify monitor manager about streaming activity
-    let monitor_id_str = muxer_name.strip_suffix("_sub").unwrap_or(muxer_name);
-    if let Ok(monitor_id) = monitor_id_str.try_into() {
-        state.monitor_manager.streaming_activity(monitor_id, true).await;
-    }
     
     let res = muxer.file(&file_name, &query.0).await;
 
