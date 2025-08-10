@@ -279,10 +279,7 @@ impl App {
             .route(
                 "/hls/{*path}",
                 any(hls_handler)
-                    .with_state(HlsHandlerState {
-                        hls_server: self.hls_server.clone(),
-                        monitor_manager: self.monitor_manager.clone(),
-                    })
+                    .with_state(self.hls_server.clone())
                     .layer(middleware::from_fn_with_state(self.auth.clone(), user))
                     .with_state(self.auth.clone()),
             )

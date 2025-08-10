@@ -104,16 +104,10 @@ pub async fn asset_handler(
     }
 }
 
-#[derive(Clone)]
-pub struct HlsHandlerState {
-    pub hls_server: Arc<HlsServer>,
-    pub monitor_manager: monitor::MonitorManager,
-}
-
 #[allow(clippy::unwrap_used)]
 pub async fn hls_handler(
     Path(path): Path<String>,
-    State(state): State<HlsHandlerState>,
+    State(hls_server): State<Arc<HlsServer>>,
     method: Method,
     req_headers: HeaderMap,
     query: Query<HlsQuery>,
@@ -158,16 +152,9 @@ pub async fn hls_handler(
         }
     };
 
-    let Some(Some(muxer)) = state.hls_server.muxer_by_name(muxer_name).await else {
+    let Some(Some(muxer)) = hls_server.muxer_by_name(muxer_name).await else {
         return (StatusCode::NOT_FOUND, headers).into_response();
     };
-    
-    // Extract monitor ID from muxer name and notify monitor manager about streaming activity
-    let monitor_id_str = muxer_name.strip_suffix("_sub").unwrap_or(muxer_name);
-    if let Ok(monitor_id) = monitor_id_str.try_into() {
-        state.monitor_manager.streaming_activity(monitor_id, true).await;
-    }
-    
     let res = muxer.file(&file_name, &query.0).await;
 
     if let Some(h) = res.headers {
